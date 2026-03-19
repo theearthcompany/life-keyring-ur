@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0
 
 #    ----------------------------------------------------------------------
-#    Copyright © 2024, 2025  Pellegrino Prevete
+#    Copyright © 2024, 2025, 2026  Pellegrino Prevete
 #
 #    All rights reserved
 #    ----------------------------------------------------------------------
@@ -32,11 +32,41 @@
 #   Bartłomiej Piotrowski
 #     <bpiotrowski@archlinux.org>
 
+_evmfs_available="$(
+  command \
+    -v \
+    "evmfs" || \
+    true)"
+if [[ ! -v "_evmfs" ]]; then
+  if [[ "${_evmfs_available}" != "" ]]; then
+    _evmfs="true"
+  elif [[ "${_evmfs_available}" == "" ]]; then
+    _evmfs="false"
+  fi
+fi
+_os="$(
+  uname \
+    -o)"
 if [[ ! -v "_offline" ]]; then
   _offline="true"
 fi
 if [[ ! -v "_git" ]]; then
   _git="false"
+fi
+if [[ ! -v "_git_service" ]]; then
+  _git_service="gitlab"
+fi
+if [[ ! -v "_git_http" ]]; then
+  _git_http="${_git_service}"
+fi
+if [[ ! -v "_ns" ]]; then
+  _ns="themartiancompany"
+fi
+if [[ "${_evmfs}" == "true" ]] || \
+   [[ "${_git_http}" == "gitlab" ]]; then
+  _archive_format="tar.gz"
+elif [[ "${_git_http}" == "github" ]]; then
+  _archive_format="zip"
 fi
 _distro=life
 _component=keyring
@@ -47,17 +77,21 @@ pkgname=(
   "${_pkg}"
 )
 # git rev-parse ${pkgver}
-_tag="20251008"
+_tag="20260319"
 pkgver="${_tag}"
-_commit="8fa658cf7a39c9042d216e198a9cf0cbfc868905"
+_commit="05accdbd34af3244fd2f551cbca139a9bf6a5663"
 # "$(date +%Y.%m.%d)"
 pkgrel=1
-pkgdesc='Life PGP keyring.'
+_pkgdesc=(
+  'Life PGP keyring.'
+)
+pkgdesc="${_pkgdesc[*]}"
 arch=(
   'any'
 )
 _url="ssh://${_distro}_local_git/home/git/${_pkg}"
-url="https://gitlab.com/themartiancompany/${_distro}"
+_http="https://${_git_service}.com"
+url="${_http}/${_ns}/${_distro}"
 license=(
   'GPL3'
 )
@@ -85,36 +119,75 @@ checkdepends=(
 source=()
 sha256sums=()
 _tarname="${_pkg}-${_commit}"
-_sum="524dd3f60f6092366e880f38d65f6e85b88003746583bd566093bcc9724586f0"
-_sig_sum="1a91dc3c2b14f723229941f462e3ec0b712a690c01650def3cfc4c114bbf2b89"
-if [[ "${_git}" == "true" ]]; then
-  _src="${_tarname}::git+${_url}#tag=${_tag}?signed"
-  _sum='SKIP'
-elif [[ "${_git}" == "false" ]]; then
-  _src="${_tarname}.tar.gz"
-  _sig_src="${_tarname}.tar.gz.sig"
+_tarfile="${_tarname}.${_archive_format}"
+_gitlab_sum=""
+_gitlab_sig_sum=""
+_github_sum=""
+_github_sig_sum=""
+if [[ "${_git_http}" == "github" ]]; then
+  _sum="${_github_sum}"
+  _sig_sum="${_github_sig_sum}"
+elif [[ "${_git_http}" == "gitlab" ]]; then
+  _sum="${_gitlab_sum}"
+  _sig_sum="${_gitlab_sig_sum}"
+fi
+_evmfs_network="100"
+_evmfs_address="0x69470b18f8b8b5f92b48f6199dcb147b4be96571"
+# Dvorak
+_evmfs_ns="0x87003Bd6C074C713783df04f36517451fF34CBEf"
+_evmfs_dir="evmfs://${_evmfs_network}/${_evmfs_address}/${_evmfs_ns}"
+_evmfs_uri="${_evmfs_dir}/${_sum}"
+_evmfs_src="${_tarfile}::${_evmfs_uri}"
+_sig_uri="${_evmfs_dir}/${_sig_sum}"
+_sig_src="${_tarfile}.sig::${_sig_uri}"
+if [[ "${_evmfs}" == "true" ]]; then
+  if [[ "${_git}" == "false" ]]; then
+  _src="${_evmfs_src}"
   source+=(
     "${_sig_src}"
   )
   sha256sums+=(
     "${_sig_sum}"
   )
+  fi
+elif [[ "${_evmfs}" == "false" ]]; then
+  if [[ "${_git}" == "true" ]]; then
+    _src="${_tarname}::git+${_url}#${_tag_name}=${_tag}?signed"
+    _sum="SKIP"
+  elif [[ "${_git}" == "false" ]]; then
+    if [[ "${_git_http}" == "gitlab" ]]; then
+      if [[ "${_tag_name}" == 'pkgver' ]]; then
+        _uri="${_url}/archive/refs/tags/${_tag}.${_archive_format}"
+      elif [[ "${_tag_name}" == "commit" ]]; then
+        _uri="${_url}/-/archive/${_tag}/${_tag}.${_archive_format}"
+      else
+        _uri=""
+      fi
+      _src="${_tarname}.${_archive_format}::${_uri}"
+    elif [[ "${_git_http}" == "github" ]]; then
+      if [[ "${_tag_name}" == "commit" ]]; then
+        _src="${_tarfile}::${_url}/archive/${_commit}.${_archive_format}"
+      fi
+    fi
+  fi
 fi
-source+=(
+source=(
   "${_src}"
 )
-sha256sums+=(
+sha256sums=(
   "${_sum}"
 )
 validpgpkeys=(
   # Truocolo
+  #   <truocolo@aol.com>
+  '97E989E6CF1D2C7F7A41FF9F95684DBE23D6A3E9'
+  'DD6732B02E6C88E9E27E2E0D5FC6652B9D9A6C01'
   #   <truocolo@0x6E5163fC4BFc1511Dbe06bB605cc14a3e462332b>
   'F690CBC17BD1F53557290AF51FC17D540D0ADEED'
   # Pellegrino Prevete (dvorak)
   #   <dvorak@0x87003Bd6C074C713783df04f36517451fF34CBEf>
   '12D8E3D7888F741E89F86EE0FEC8567A644F1D16'
 )
-
 
 build() {
   cd \
